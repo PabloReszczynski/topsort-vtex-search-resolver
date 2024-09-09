@@ -712,7 +712,10 @@ export const queries = {
     const workspaceSearchParams = await getWorkspaceSearchParamsFromStorage(ctx)
     const selectedFacets: SelectedFacet[] = args.facetKey && args.facetValue ? [{key: args.facetKey, value: args.facetValue}] : []
 
+    const { advertisementOptions = defaultAdvertisementOptions } = args
+
     const biggyArgs : {[key: string] : any} = {
+      ...advertisementOptions,
       ...args,
       query: args.fullText,
       from: 0,
