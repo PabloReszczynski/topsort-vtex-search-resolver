@@ -1,5 +1,5 @@
-import { Auction } from "@topsort/sdk";
-import { ExternalClient, IOContext, InstanceOptions } from "@vtex/api";
+import type { Auction } from "@topsort/sdk";
+import { ExternalClient, type IOContext, type InstanceOptions } from "@vtex/api";
 import axios from "axios";
 import { parseState } from "../utils/searchState";
 
@@ -161,6 +161,7 @@ export class IntelligentSearchApi extends ExternalClient {
       return result;
     }
 
+    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
     const productIds = result.products.map((product: any) => product.productId);
     const auction: Auction = {
       auctions: [
@@ -187,7 +188,7 @@ export class IntelligentSearchApi extends ExternalClient {
         data: auction,
       });
 
-      // biome-ignore lint/suspicious/noConsoleLog: <explanation>
+      // biome-ignore lint/suspicious/noConsoleLog: Temporary console.log
       console.log("auctionResult", auctionResult.data);
 
       const sponsoredProducts =
@@ -208,7 +209,7 @@ export class IntelligentSearchApi extends ExternalClient {
         result.products.unshift(product);
       }
 
-      // biome-ignore lint/suspicious/noConsoleLog: <explanation>
+      // biome-ignore lint/suspicious/noConsoleLog: Temporary console.log
       console.log("createAuction axios api test passed", result.products);
       this.context.logger.info({
         service: "IntelligentSearchApi",

@@ -1,7 +1,7 @@
 {
   "vendor": "topsortpartnercl",
   "name": "topsort-search-resolver",
-  "version": "1.71.0",
+  "version": "0.1.0",
   "title": "Topsort's Fork of vtex search resolver.",
   "description": "Topsort's Fork of vtex search resolver.",
   "credentialType": "absolute",
