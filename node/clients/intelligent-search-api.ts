@@ -1,6 +1,7 @@
-import { ExternalClient, InstanceOptions, IOContext } from "@vtex/api";
+import { Auction } from "@topsort/sdk";
+import { ExternalClient, IOContext, InstanceOptions } from "@vtex/api";
+import axios from "axios";
 import { parseState } from "../utils/searchState";
-import { createAuction, TopsortAuction } from "@topsort/sdk";
 
 const isPathTraversal = (str: string) => str.indexOf("..") >= 0;
 interface CorrectionParams {
@@ -127,13 +128,18 @@ export class IntelligentSearchApi extends ExternalClient {
     });
   }
 
-  public async productSearch(params: SearchResultArgs, path: string, shippingHeader?: string[]) {
+  public async productSearch(
+    params: SearchResultArgs,
+    path: string,
+    shippingHeader?: string[],
+    topsortApiKey?: string,
+  ) {
     const { query, leap, searchState } = params;
     if (isPathTraversal(path)) {
       throw new Error("Malformed URL");
     }
 
-    return this.http.get(`/product_search/${path}`, {
+    const result = await this.http.get(`/product_search/${path}`, {
       params: {
         query: query && decodeQuery(query),
         locale: this.locale,
@@ -146,61 +152,69 @@ export class IntelligentSearchApi extends ExternalClient {
         "x-vtex-shipping-options": shippingHeader ?? "",
       },
     });
-  }
 
-  public async sponsoredProducts(
-    params: SearchResultArgs,
-    path: string,
-    shippingHeader?: string[],
-    topsortApiKey?: string,
-  ) {
-    const newParams = {
-      ...params,
-      count: Number(params.count ?? 0) < 100 ? 100 : params.count,
-    };
-    const result = await this.productSearch(newParams, path, shippingHeader);
+    if (result.products.length === 0) {
+      return result;
+    }
 
     if (!topsortApiKey) {
       return result;
     }
-    if (result.products.length === 0) {
-      return result;
-    }
-    // Skip if sort is already defined
-    if (params.sort != null) {
-      return result;
-    }
 
     const productIds = result.products.map((product: any) => product.productId);
-
-    const auction: TopsortAuction = {
+    const auction: Auction = {
       auctions: [
         {
+          type: "listings",
+          // TODO: Set number of slots in params
+          slots: params.sponsoredCount || 2,
           products: {
             ids: productIds,
-          } as any,
-          type: "listings",
-          slots: params.sponsoredCount ?? 3,
+          },
         },
       ],
     };
+
     try {
-      const auctionResult = await createAuction({ apiKey: topsortApiKey }, auction);
-      const sponsoredProducts = auctionResult.results[0].winners.map((winner: any) => {
-        const product = result.products.find(
-          (product: any) => product.productId === winner.productId,
-        );
-        return {
-          ...product,
-          sponsored: true,
-          topsort: {
-            resolvedBidId: winner.resolvedBidId,
-          },
-        };
+      const url = "https://api.topsort.com/v2/auctions";
+      const auctionResult = await axios(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${topsortApiKey}`,
+        },
+        data: auction,
       });
+
+      // biome-ignore lint/suspicious/noConsoleLog: <explanation>
+      console.log("auctionResult", auctionResult.data);
+
+      const sponsoredProducts =
+        auctionResult.data.results[0].winners?.map((winner: any) => {
+          const product = result.products.find(
+            (product: any) => product.productId === winner.productId,
+          );
+          return {
+            ...product,
+            sponsored: true,
+            topsort: {
+              resolvedBidId: winner.resolvedBidId,
+            },
+          };
+        }) || [];
+
       for (const product of sponsoredProducts.reverse()) {
         result.products.unshift(product);
       }
+
+      // biome-ignore lint/suspicious/noConsoleLog: <explanation>
+      console.log("createAuction axios api test passed", result.products);
+      this.context.logger.info({
+        service: "IntelligentSearchApi",
+        message: "createAuction axios api test passed",
+        result: result.products,
+      });
     } catch (err) {
       this.context.logger.warn({
         service: "IntelligentSearchApi",
@@ -208,9 +222,34 @@ export class IntelligentSearchApi extends ExternalClient {
         errorStack: err,
       });
     }
-    // Cut to the original length
+
     result.products.length =
       result.products.length > Number(params.to) ? params.to : result.products.length;
     return result;
+  }
+
+  public async sponsoredProducts(
+    params: SearchResultArgs,
+    path: string,
+    shippingHeader?: string[],
+  ) {
+    const { query, leap, searchState } = params;
+    if (isPathTraversal(path)) {
+      throw new Error("Malformed URL");
+    }
+
+    return this.http.get(`/sponsored_products/${path}`, {
+      params: {
+        query: query && decodeQuery(query),
+        locale: this.locale,
+        bgy_leap: leap ? true : undefined,
+        ...parseState(searchState),
+        ...params,
+      },
+      metric: "product-search",
+      headers: {
+        "x-vtex-shipping-options": shippingHeader ?? "",
+      },
+    });
   }
 }
